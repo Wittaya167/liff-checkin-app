@@ -1,260 +1,262 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ระบบเช็คอิน/เอาท์</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      background-color: #f0f2f5;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-    .container {
-      background-color: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-      padding: 30px;
-      width: 100%;
-      max-width: 400px;
-      text-align: center;
-    }
-    .btn {
-      padding: 15px 25px;
-      border-radius: 12px;
-      font-weight: 600;
-      font-size: 1.1rem;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      display: block;
-      width: 100%;
-      margin-bottom: 15px;
-      border: none;
-    }
-    .btn-checkin {
-      background: linear-gradient(135deg, #4CAF50, #66BB6A); /* Green gradient */
-      color: white;
-      box-shadow: 0 4px 10px rgba(76, 175, 80, 0.4);
-    }
-    .btn-checkin:hover {
-      background: linear-gradient(135deg, #66BB6A, #4CAF50);
-      box-shadow: 0 6px 15px rgba(76, 175, 80, 0.6);
-    }
-    .btn-checkout {
-      background: linear-gradient(135deg, #2196F3, #42A5F5); /* Blue gradient */
-      color: white;
-      box-shadow: 0 4px 10px rgba(33, 150, 243, 0.4);
-    }
-    .btn-checkout:hover {
-      background: linear-gradient(135deg, #42A5F5, #2196F3);
-      box-shadow: 0 6px 15px rgba(33, 150, 243, 0.6);
-    }
-    .status-message {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 8px;
-      font-size: 1rem;
-      font-weight: 500;
-      color: #333;
-      background-color: #e0e0e0;
-      word-wrap: break-word; /* เพื่อให้ข้อความยาวๆ ไม่ล้น */
-    }
-    .status-success {
-      background-color: #e8f5e9;
-      color: #2e7d32;
-    }
-    .status-error {
-      background-color: #ffebee;
-      color: #d32f2f;
-    }
-    .loading-spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 30px;
-      height: 30px;
-      animation: spin 1s linear infinite;
-      margin: 20px auto;
-      display: none; /* Hidden by default */
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1 class="text-2xl font-bold text-gray-800 mb-6">ระบบเช็คอิน/เอาท์</h1>
-    <p class="text-gray-600 mb-8">กรุณากดปุ่มเพื่อเช็คอินหรือเช็คเอาท์</p>
-
-    <button id="checkInBtn" class="btn btn-checkin">
-      เช็คอิน
-    </button>
-    <button id="checkOutBtn" class="btn btn-checkout">
-      เช็คเอาท์
-    </button>
-
-    <div id="loadingSpinner" class="loading-spinner"></div>
-    <div id="statusMessage" class="status-message hidden"></div>
-  </div>
-
-  <script>
-    let userId = ''; // จะเก็บ LINE User ID
-    let liffReady = false; // สถานะ LIFF พร้อมใช้งาน
-
-    // ฟังก์ชันสำหรับแสดงข้อความสถานะ
-    function showStatus(message, type = 'info') {
-      const statusDiv = document.getElementById('statusMessage');
-      statusDiv.textContent = message;
-      statusDiv.classList.remove('hidden', 'status-success', 'status-error');
-      if (type === 'success') {
-        statusDiv.classList.add('status-success');
-      } else if (type === 'error') {
-        statusDiv.classList.add('status-error');
-      }
-      // ซ่อนข้อความหลังจาก 5 วินาที
-      setTimeout(() => {
-        statusDiv.classList.add('hidden');
-      }, 5000);
-    }
-
-    // ฟังก์ชันสำหรับแสดง/ซ่อน spinner
-    function toggleSpinner(show) {
-      const spinner = document.getElementById('loadingSpinner');
-      spinner.style.display = show ? 'block' : 'none';
-      document.getElementById('checkInBtn').disabled = show;
-      document.getElementById('checkOutBtn').disabled = show;
-    }
-
-    // ฟังก์ชันหลักในการ Initialize LIFF
-    async function initializeLiff() {
-      try {
-        // LIFF ID ที่ถูกต้องของคุณ
-        const liffId = "2007739838-pYDAG4NJ"; 
-        console.log("DEBUG: LIFF ID used for initialization:", liffId); 
-        await liff.init({ liffId: liffId }); 
-        liffReady = true;
-
-        if (!liff.isLoggedIn()) {
-          console.log("DEBUG: User not logged in, initiating LIFF login."); 
-          liff.login(); // ถ้ายังไม่ได้ Login ให้ Login
-        } else {
-          const profile = await liff.getProfile();
-          userId = profile.userId;
-          console.log("DEBUG: LIFF initialized successfully. User ID:", userId);
-          showStatus(`ยินดีต้อนรับ ${profile.displayName || ''}!`, 'info');
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <base target="_top">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>ระบบเช็คอิน/เอาท์</title>
+      <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+      <style>
+        body {
+          font-family: 'Inter', sans-serif;
+          background-color: #f0f2f5;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          margin: 0;
+          padding: 20px;
+          box-sizing: border-box;
         }
-      } catch (err) {
-        console.error("DEBUG: LIFF initialization failed with error:", err); 
-        showStatus("เกิดข้อผิดพลาดในการเริ่มต้น LIFF: " + err.message, 'error');
-      }
-    }
+        .container {
+          background-color: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+          padding: 30px;
+          width: 100%;
+          max-width: 400px;
+          text-align: center;
+        }
+        .btn {
+          padding: 15px 25px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 1.1rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          display: block;
+          width: 100%;
+          margin-bottom: 15px;
+          border: none;
+        }
+        .btn-checkin {
+          background: linear-gradient(135deg, #4CAF50, #66BB6A); /* Green gradient */
+          color: white;
+          box-shadow: 0 4px 10px rgba(76, 175, 80, 0.4);
+        }
+        .btn-checkin:hover {
+          background: linear-gradient(135deg, #66BB6A, #4CAF50);
+          box-shadow: 0 6px 15px rgba(76, 175, 80, 0.6);
+        }
+        .btn-checkout {
+          background: linear-gradient(135deg, #2196F3, #42A5F5); /* Blue gradient */
+          color: white;
+          box-shadow: 0 4px 10px rgba(33, 150, 243, 0.4);
+        }
+        .btn-checkout:hover {
+          background: linear-gradient(135deg, #42A5F5, #2196F3);
+          box-shadow: 0 6px 15px rgba(33, 150, 243, 0.6);
+        }
+        .status-message {
+          margin-top: 20px;
+          padding: 15px;
+          border-radius: 8px;
+          font-size: 1rem;
+          font-weight: 500;
+          color: #333;
+          background-color: #e0e0e0;
+          word-wrap: break-word; /* เพื่อให้ข้อความยาวๆ ไม่ล้น */
+        }
+        .status-success {
+          background-color: #e8f5e9;
+          color: #2e7d32;
+        }
+        .status-error {
+          background-color: #ffebee;
+          color: #d32f2f;
+        }
+        .loading-spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          animation: spin 1s linear infinite;
+          margin: 20px auto;
+          display: none; /* Hidden by default */
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6">ระบบเช็คอิน/เอาท์</h1>
+        <p class="text-gray-600 mb-8">กรุณากดปุ่มเพื่อเช็คอินหรือเช็คเอาท์</p>
 
-    // ฟังก์ชันสำหรับดึงตำแหน่ง GPS และส่งไปยัง Apps Script
-    async function sendLocation(statusType) {
-      if (!liffReady) {
-        showStatus("LIFF ยังไม่พร้อมใช้งาน กรุณารอสักครู่", 'error');
-        return;
-      }
-      if (!userId) {
-        showStatus("ไม่พบข้อมูลผู้ใช้ LINE กรุณาลองใหม่", 'error');
-        return;
-      }
+        <button id="checkInBtn" class="btn btn-checkin">
+          เช็คอิน
+        </button>
+        <button id="checkOutBtn" class="btn btn-checkout">
+          เช็คเอาท์
+        </button>
 
-      toggleSpinner(true);
-      showStatus(`กำลังดึงตำแหน่งเพื่อ${statusType}...`);
+        <div id="loadingSpinner" class="loading-spinner"></div>
+        <div id="statusMessage" class="status-message hidden"></div>
+      </div>
 
-      try {
-        const position = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000, // 10 วินาที
-            maximumAge: 0 // ไม่ใช้ cache
-          });
-        });
+      <script>
+        let userId = ''; // จะเก็บ LINE User ID
+        let liffReady = false; // สถานะ LIFF พร้อมใช้งาน
 
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const accuracy = position.coords.accuracy; // ได้ค่า accuracy ที่นี่!
+        // ฟังก์ชันสำหรับแสดงข้อความสถานะ
+        function showStatus(message, type = 'info') {
+          const statusDiv = document.getElementById('statusMessage');
+          statusDiv.textContent = message;
+          statusDiv.classList.remove('hidden', 'status-success', 'status-error');
+          if (type === 'success') {
+            statusDiv.classList.add('status-success');
+          } else if (type === 'error') {
+            statusDiv.classList.add('status-error');
+          }
+          // ซ่อนข้อความหลังจาก 5 วินาที
+          setTimeout(() => {
+            statusDiv.classList.add('hidden');
+          }, 5000);
+        }
 
-        showStatus(`ได้ตำแหน่งแล้ว: Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}, Accuracy ${accuracy.toFixed(1)}m. กำลังส่งข้อมูล...`);
+        // ฟังก์ชันสำหรับแสดง/ซ่อน spinner
+        function toggleSpinner(show) {
+          const spinner = document.getElementById('loadingSpinner');
+          spinner.style.display = show ? 'block' : 'none';
+          document.getElementById('checkInBtn').disabled = show;
+          document.getElementById('checkOutBtn').disabled = show;
+        }
 
-        // Apps Script Web App URL ที่ถูกต้องของคุณ
-        const appsScriptUrl = "https://script.google.com/macros/s/AKfycbzhX95uykl9anmTu3s6Y_1bWFqa8QxsTvUrpZG9_LJkFf_F2Xdd00XIslKTcNSiU5vH/exec"; // **ตรวจสอบ URL นี้อีกครั้ง**
-        console.log("DEBUG: Sending data to Apps Script URL:", appsScriptUrl); 
+        // ฟังก์ชันหลักในการ Initialize LIFF
+        async function initializeLiff() {
+          try {
+            // LIFF ID ที่ถูกต้องของคุณ
+            const liffId = "2007739838-pYDAG4NJ"; 
+            console.log("DEBUG: LIFF ID used for initialization:", liffId); 
+            await liff.init({ liffId: liffId }); 
+            liffReady = true;
 
-        const requestBody = JSON.stringify({
-            type: "checkin_data", // ระบุประเภทข้อมูลเพื่อให้ Apps Script แยกแยะได้
-            userId: userId,
-            lat: lat,
-            lng: lng,
-            accuracy: accuracy,
-            status: statusType // 'เช็คอิน' หรือ 'เช็คเอาท์'
-        });
-        console.log("DEBUG: Request Body being sent:", requestBody); // Log request body
+            if (!liff.isLoggedIn()) {
+              console.log("DEBUG: User not logged in, initiating LIFF login."); 
+              liff.login(); // ถ้ายังไม่ได้ Login ให้ Login
+            } else {
+              const profile = await liff.getProfile();
+              userId = profile.userId;
+              console.log("DEBUG: LIFF initialized successfully. User ID:", userId);
+              showStatus(`ยินดีต้อนรับ ${profile.displayName || ''}!`, 'info');
+            }
+          } catch (err) {
+            console.error("DEBUG: LIFF initialization failed with error:", err); 
+            showStatus("เกิดข้อผิดพลาดในการเริ่มต้น LIFF: " + err.message, 'error');
+          }
+        }
 
-        const response = await fetch(appsScriptUrl, { 
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: requestBody,
-        });
-
-        console.log("DEBUG: Raw response from Apps Script:", response); // Log raw response
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("DEBUG: Apps Script response not OK. Status:", response.status, "Text:", errorText);
-            showStatus(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${response.status} - ${errorText.substring(0, 100)}...`, 'error');
+        // ฟังก์ชันสำหรับดึงตำแหน่ง GPS และส่งไปยัง Apps Script
+        async function sendLocation(statusType) {
+          if (!liffReady) {
+            showStatus("LIFF ยังไม่พร้อมใช้งาน กรุณารอสักครู่", 'error');
             return;
+          }
+          if (!userId) {
+            showStatus("ไม่พบข้อมูลผู้ใช้ LINE กรุณาลองใหม่", 'error');
+            return;
+          }
+
+          toggleSpinner(true);
+          showStatus(`กำลังดึงตำแหน่งเพื่อ${statusType}...`);
+
+          try {
+            const position = await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000, // 10 วินาที
+                maximumAge: 0 // ไม่ใช้ cache
+              });
+            });
+
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy; // ได้ค่า accuracy ที่นี่!
+
+            showStatus(`ได้ตำแหน่งแล้ว: Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}, Accuracy ${accuracy.toFixed(1)}m. กำลังส่งข้อมูล...`);
+
+            // Apps Script Web App URL ที่ถูกต้องของคุณ (จะถูกแทนที่ด้วย URL ใหม่)
+            // **สำคัญ: คุณต้องคัดลอก URL นี้จาก Apps Script ของคุณหลังจาก Deploy แล้ว**
+            const appsScriptUrl = "YOUR_APPS_SCRIPT_WEB_APP_URL"; 
+            console.log("DEBUG: Sending data to Apps Script URL:", appsScriptUrl); 
+
+            const requestBody = JSON.stringify({
+                type: "checkin_data", // ระบุประเภทข้อมูลเพื่อให้ Apps Script แยกแยะได้
+                userId: userId,
+                lat: lat,
+                lng: lng,
+                accuracy: accuracy,
+                status: statusType // 'เช็คอิน' หรือ 'เช็คเอาท์'
+            });
+            console.log("DEBUG: Request Body being sent:", requestBody); // Log request body
+
+            const response = await fetch(appsScriptUrl, { 
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: requestBody,
+            });
+
+            console.log("DEBUG: Raw response from Apps Script:", response); // Log raw response
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("DEBUG: Apps Script response not OK. Status:", response.status, "Text:", errorText);
+                showStatus(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${response.status} - ${errorText.substring(0, 100)}...`, 'error');
+                return;
+            }
+
+            const result = await response.json();
+            console.log("DEBUG: Parsed JSON result from Apps Script:", result); // Log parsed result
+
+            if (result.success) {
+              showStatus(`${result.message}`, 'success');
+              console.log("DEBUG: Apps Script response success:", result.message); 
+              // liff.closeWindow(); // อาจจะปิดหน้าต่าง LIFF หลังจากสำเร็จ
+            } else {
+              showStatus(`เกิดข้อผิดพลาด: ${result.message}`, 'error');
+              console.error("DEBUG: Apps Script response error:", result.message); 
+            }
+
+          } catch (error) {
+            console.error("DEBUG: Error in sendLocation function (outer catch):", error); 
+            let errorMessage = "ไม่สามารถดึงตำแหน่ง GPS ได้ หรือเกิดข้อผิดพลาดในการส่งข้อมูล";
+            if (error.code === error.PERMISSION_DENIED) {
+              errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง กรุณาอนุญาตการเข้าถึง GPS ในการตั้งค่าโทรศัพท์ของคุณ";
+            } else if (error.code === error.POSITION_UNAVAILABLE) {
+              errorMessage = "ไม่สามารถระบุตำแหน่งได้ กรุณาลองใหม่ในที่โล่ง";
+            } else if (error.code === error.TIMEOUT) {
+              errorMessage = "การดึงตำแหน่งใช้เวลานานเกินไป กรุณาตรวจสอบสัญญาณ GPS";
+            } else if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+              errorMessage = "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ";
+            }
+            showStatus(`❌ ${errorMessage}`, 'error');
+          } finally {
+            toggleSpinner(false);
+          }
         }
 
-        const result = await response.json();
-        console.log("DEBUG: Parsed JSON result from Apps Script:", result); // Log parsed result
+        // Event Listeners สำหรับปุ่ม
+        document.getElementById('checkInBtn').addEventListener('click', () => sendLocation('เช็คอิน'));
+        document.getElementById('checkOutBtn').addEventListener('click', () => sendLocation('เช็คเอาท์'));
 
-        if (result.success) {
-          showStatus(`${result.message}`, 'success');
-          console.log("DEBUG: Apps Script response success:", result.message); 
-          // liff.closeWindow(); // อาจจะปิดหน้าต่าง LIFF หลังจากสำเร็จ
-        } else {
-          showStatus(`เกิดข้อผิดพลาด: ${result.message}`, 'error');
-          console.error("DEBUG: Apps Script response error:", result.message); 
-        }
-
-      } catch (error) {
-        console.error("DEBUG: Error in sendLocation function (outer catch):", error); 
-        let errorMessage = "ไม่สามารถดึงตำแหน่ง GPS ได้ หรือเกิดข้อผิดพลาดในการส่งข้อมูล";
-        if (error.code === error.PERMISSION_DENIED) {
-          errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง กรุณาอนุญาตการเข้าถึง GPS ในการตั้งค่าโทรศัพท์ของคุณ";
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          errorMessage = "ไม่สามารถระบุตำแหน่งได้ กรุณาลองใหม่ในที่โล่ง";
-        } else if (error.code === error.TIMEOUT) {
-          errorMessage = "การดึงตำแหน่งใช้เวลานานเกินไป กรุณาตรวจสอบสัญญาณ GPS";
-        } else if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
-          errorMessage = "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ";
-        }
-        showStatus(`❌ ${errorMessage}`, 'error');
-      } finally {
-        toggleSpinner(false);
-      }
-    }
-
-    // Event Listeners สำหรับปุ่ม
-    document.getElementById('checkInBtn').addEventListener('click', () => sendLocation('เช็คอิน'));
-    document.getElementById('checkOutBtn').addEventListener('click', () => sendLocation('เช็คเอาท์'));
-
-    // เริ่มต้น LIFF เมื่อหน้าเว็บโหลดเสร็จ
-    window.onload = initializeLiff;
-  </script>
-</body>
-</html>
+        // เริ่มต้น LIFF เมื่อหน้าเว็บโหลดเสร็จ
+        window.onload = initializeLiff;
+      </script>
+    </body>
+    </html>
+    
