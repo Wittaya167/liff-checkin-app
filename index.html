@@ -189,26 +189,38 @@
 
         showStatus(`ได้ตำแหน่งแล้ว: Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}, Accuracy ${accuracy.toFixed(1)}m. กำลังส่งข้อมูล...`);
 
-        // Apps Script Web App URL ที่ถูกต้องของคุณ (จะถูกแทนที่ด้วย URL ใหม่)
-        // **สำคัญ: คุณต้องคัดลอก URL นี้จาก Apps Script ของคุณหลังจาก Deploy แล้ว**
-        const appsScriptUrl = "https://script.google.com/macros/s/AKfycbzhX95uykl9anmTu3s6Y_1bWFqa8QxsTvUrpZG9_LJkFf_F2Xdd00XIslKTcNSiU5vH/exec"; 
+        // Apps Script Web App URL ที่ถูกต้องของคุณ
+        const appsScriptUrl = "https://script.google.com/macros/s/AKfycbzhX95uykl9anmTu3s6Y_1bWFqa8QxsTvUrpZG9_LJkFf_F2Xdd00XIslKTcNSiU5vH/exec"; // **ตรวจสอบ URL นี้อีกครั้ง**
         console.log("DEBUG: Sending data to Apps Script URL:", appsScriptUrl); 
-        const response = await fetch(appsScriptUrl, { 
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+
+        const requestBody = JSON.stringify({
             type: "checkin_data", // ระบุประเภทข้อมูลเพื่อให้ Apps Script แยกแยะได้
             userId: userId,
             lat: lat,
             lng: lng,
             accuracy: accuracy,
             status: statusType // 'เช็คอิน' หรือ 'เช็คเอาท์'
-          }),
+        });
+        console.log("DEBUG: Request Body being sent:", requestBody); // Log request body
+
+        const response = await fetch(appsScriptUrl, { 
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: requestBody,
         });
 
+        console.log("DEBUG: Raw response from Apps Script:", response); // Log raw response
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("DEBUG: Apps Script response not OK. Status:", response.status, "Text:", errorText);
+            showStatus(`เกิดข้อผิดพลาดในการส่งข้อมูล: ${response.status} - ${errorText.substring(0, 100)}...`, 'error');
+            return;
+        }
+
         const result = await response.json();
+        console.log("DEBUG: Parsed JSON result from Apps Script:", result); // Log parsed result
 
         if (result.success) {
           showStatus(`${result.message}`, 'success');
@@ -220,7 +232,7 @@
         }
 
       } catch (error) {
-        console.error("DEBUG: Error in sendLocation function:", error); 
+        console.error("DEBUG: Error in sendLocation function (outer catch):", error); 
         let errorMessage = "ไม่สามารถดึงตำแหน่ง GPS ได้ หรือเกิดข้อผิดพลาดในการส่งข้อมูล";
         if (error.code === error.PERMISSION_DENIED) {
           errorMessage = "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง กรุณาอนุญาตการเข้าถึง GPS ในการตั้งค่าโทรศัพท์ของคุณ";
@@ -228,6 +240,8 @@
           errorMessage = "ไม่สามารถระบุตำแหน่งได้ กรุณาลองใหม่ในที่โล่ง";
         } else if (error.code === error.TIMEOUT) {
           errorMessage = "การดึงตำแหน่งใช้เวลานานเกินไป กรุณาตรวจสอบสัญญาณ GPS";
+        } else if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+          errorMessage = "ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ";
         }
         showStatus(`❌ ${errorMessage}`, 'error');
       } finally {
