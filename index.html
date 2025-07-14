@@ -10,6 +10,15 @@
       font-family: sans-serif;
       padding: 20px;
       text-align: center;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 400px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     button {
       font-size: 1.2em;
@@ -20,97 +29,205 @@
       color: white;
       cursor: pointer;
       margin-top: 20px;
+      width: 100%;
     }
     button:hover {
       background-color: #00a300;
     }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #status {
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 8px;
+      background-color: #f0f0f0;
+      white-space: pre-wrap;
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .loading {
+      background-color: #e2e3e5;
+      color: #383d41;
+    }
   </style>
 </head>
 <body>
-  <h2>📍 ระบบเช็คอิน/เช็คเอาท์ (Debug)</h2>
-  <p id="status">🔄 กำลังโหลด LIFF...</p>
-  <button onclick="startCheckIn()">✅ เช็คอิน / เช็คเอาท์</button>
+  <div class="container">
+    <h2>📍 ระบบเช็คอิน/เช็คเอาท์</h2>
+    <div id="status" class="loading">🔄 กำลังโหลด LIFF...</div>
+    <button id="checkinBtn" onclick="startCheckIn()" disabled>✅ เช็คอิน / เช็คเอาท์</button>
+  </div>
 
   <script>
     const LIFF_ID = "2007739838-pYDAG4NJ";
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxjsC2o5ycAnOF6y0qYfqXBRtT9VD8IipzvzlzcXzyuB-4t6EvMg_225lY_F6t_4k7m/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby66cVjuu5XgDDhYJ4DP25T7PbZfgCM7XXXVxSAbrEI_XDpw0ebR91pprtVybddUcqh/exec";
     const OFFICE_LAT = 16.38648;
     const OFFICE_LNG = 102.83145;
     const MAX_DISTANCE = 300;
 
+    let isProcessing = false;
+
+    function updateStatus(message, type = 'loading') {
+      const statusEl = document.getElementById("status");
+      statusEl.innerText = message;
+      statusEl.className = type;
+    }
+
+    function setButtonState(enabled) {
+      const btn = document.getElementById("checkinBtn");
+      btn.disabled = !enabled;
+      isProcessing = !enabled;
+    }
+
     async function startCheckIn() {
-      document.getElementById("status").innerText = "📲 เริ่มเช็คอิน...";
+      if (isProcessing) return;
+      
+      setButtonState(false);
+      updateStatus("📲 เริ่มเช็คอิน...", 'loading');
+      
       try {
+        // ตรวจสอบการล็อกอิน
         if (!liff.isLoggedIn()) {
-          document.getElementById("status").innerText = "📥 ยังไม่ล็อกอิน → ทำการล็อกอิน...";
+          updateStatus("📥 ยังไม่ล็อกอิน → ทำการล็อกอิน...", 'loading');
           liff.login();
           return;
         }
 
-        document.getElementById("status").innerText = "✅ กำลังดึงโปรไฟล์...";
+        // ดึงโปรไฟล์
+        updateStatus("✅ กำลังดึงโปรไฟล์...", 'loading');
         const profile = await liff.getProfile();
         const userId = profile.userId;
-        document.getElementById("status").innerText = "✅ ได้ LINE User ID: " + userId;
+        
+        console.log('User ID:', userId);
+        updateStatus(`✅ ได้ LINE User ID: ${userId.substring(0, 10)}...`, 'loading');
 
-        document.getElementById("status").innerText += "\n📡 กำลังขอพิกัด GPS...";
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            const acc = position.coords.accuracy;
-
-            document.getElementById("status").innerText = `✅ ได้ GPS: ${lat}, ${lng} (±${acc}m)`;
-
-            const distance = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG);
-            if (distance > MAX_DISTANCE) {
-              document.getElementById("status").innerText += `\n🚫 นอกพื้นที่ (${distance.toFixed(2)} m)`;
-              return;
+        // ขอพิกัด GPS
+        updateStatus("📡 กำลังขอพิกัด GPS...", 'loading');
+        
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            { 
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 60000
             }
+          );
+        });
 
-            // Payload นี้จะถูกส่งไปที่ Apps Script
-            const payload = { userId, lat, lng, accuracy: acc }; 
-            document.getElementById("status").innerText += "\n📤 ส่งข้อมูลไป Google Apps Script...";
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const acc = position.coords.accuracy;
 
-            const res = await fetch(SCRIPT_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload)
-            });
+        console.log('GPS:', { lat, lng, acc });
+        updateStatus(`✅ ได้ GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)} (±${acc.toFixed(0)}m)`, 'loading');
 
-            const txt = await res.text(); // รับค่าเป็น text เพราะ Apps Script เดิมของคุณส่ง text
-            document.getElementById("status").innerText = "✅ สำเร็จ: " + txt;
+        // ตรวจสอบระยะทาง
+        const distance = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG);
+        console.log('Distance:', distance);
+        
+        if (distance > MAX_DISTANCE) {
+          updateStatus(`🚫 อยู่นอกพื้นที่ออฟฟิศ (ห่าง ${distance.toFixed(0)} เมตร)\nต้องอยู่ในรัศมี ${MAX_DISTANCE} เมตร`, 'error');
+          setButtonState(true);
+          return;
+        }
+
+        // เตรียมข้อมูลส่ง
+        const payload = { 
+          userId, 
+          lat, 
+          lng, 
+          accuracy: acc 
+        };
+        
+        console.log('Sending payload:', payload);
+        updateStatus("📤 ส่งข้อมูลไป Google Apps Script...", 'loading');
+
+        // ส่งข้อมูล
+        const response = await fetch(SCRIPT_URL, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json"
           },
-          (err) => {
-            document.getElementById("status").innerText = "❌ ไม่สามารถดึง GPS: " + err.message;
-          },
-          { enableHighAccuracy: true }
-        );
+          body: JSON.stringify(payload)
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const responseText = await response.text();
+        console.log('Response text:', responseText);
+
+        // พยายามแปลง JSON ก่อน
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (e) {
+          // ถ้าไม่ใช่ JSON ให้ใช้ text ตรงๆ
+          result = { message: responseText };
+        }
+
+        if (result.success === false) {
+          updateStatus(`❌ ${result.message}`, 'error');
+        } else {
+          updateStatus(`✅ ${result.message || responseText}`, 'success');
+        }
 
       } catch (err) {
-        document.getElementById("status").innerText = "❌ ERROR: " + err.message;
+        console.error('Error:', err);
+        updateStatus(`❌ เกิดข้อผิดพลาด: ${err.message}`, 'error');
+      } finally {
+        setButtonState(true);
       }
     }
 
     async function initLIFF() {
       try {
+        updateStatus("🔄 กำลังโหลด LIFF...", 'loading');
         await liff.init({ liffId: LIFF_ID });
         await liff.ready;
-        document.getElementById("status").innerText = "📱 LIFF พร้อมแล้ว กดเช็คอินได้เลย";
+        
+        updateStatus("📱 LIFF พร้อมแล้ว กดเช็คอินได้เลย", 'success');
+        setButtonState(true);
+        
       } catch (err) {
-        document.getElementById("status").innerText = "❌ LIFF โหลดไม่สำเร็จ: " + err.message;
+        console.error('LIFF init error:', err);
+        updateStatus(`❌ LIFF โหลดไม่สำเร็จ: ${err.message}`, 'error');
       }
     }
 
     function calculateDistance(lat1, lng1, lat2, lng2) {
       function toRad(x) { return x * Math.PI / 180; }
-      const R = 6371000;
+      const R = 6371000; // รัศมีโลกในหน่วยเมตร
       const dLat = toRad(lat2 - lat1);
       const dLng = toRad(lng2 - lng1);
-      const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2) ** 2;
+      const a = Math.sin(dLat/2) ** 2 + 
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+                Math.sin(dLng/2) ** 2;
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
     }
 
+    // เริ่มต้นเมื่อหน้าโหลด
     initLIFF();
   </script>
 </body>
