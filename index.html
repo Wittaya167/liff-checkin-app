@@ -5,70 +5,97 @@
   <title>Check-In via LIFF</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://static.line-scdn.net/liff/edge/2.1/sdk.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    h2 { font-size: 1.5em; }
+    button {
+      font-size: 1.2em;
+      padding: 15px 30px;
+      border: none;
+      border-radius: 8px;
+      background-color: #00c300;
+      color: white;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #00a300;
+    }
+  </style>
 </head>
 <body>
-  <h2>📍 ระบบเช็คอิน</h2>
-  <button onclick="startCheckIn()">✅ กดเพื่อเช็คอิน</button>
-  <p id="status"></p>
+  <h2>📍 ระบบเช็คอิน/เช็คเอาท์</h2>
+  <p id="status">🔄 กำลังโหลด LIFF...</p>
+  <button onclick="startCheckIn()">✅ กดเพื่อเช็คอิน / เช็คเอาท์</button>
 
   <script>
     const LIFF_ID = "2007739838-pYDAG4NJ";
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby66cVjuu5XgDDhYJ4DP25T7PbZfgCM7XXXVxSAbrEI_XDpw0ebR91pprtVybddUcqh/exec"; // ใส่ Web App URL ที่ได้จาก Apps Script
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby66cVjuu5XgDDhYJ4DP25T7PbZfgCM7XXXVxSAbrEI_XDpw0ebR91pprtVybddUcqh/exec"; // ใส่ Web App URL
+
     const OFFICE_LAT = 16.38648;
     const OFFICE_LNG = 102.83145;
     const MAX_DISTANCE = 300; // เมตร
 
     async function startCheckIn() {
-      document.getElementById("status").innerText = "กำลังโหลด LIFF...";
-      await liff.init({ liffId: LIFF_ID });
+      document.getElementById("status").innerText = "📡 กำลังดึงข้อมูล...";
 
-      if (!liff.isLoggedIn()) liff.login();
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
 
       const profile = await liff.getProfile();
       const userId = profile.userId;
 
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const acc = position.coords.accuracy;
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const acc = position.coords.accuracy;
 
-        const distance = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG);
+          const distance = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG);
+          if (distance > MAX_DISTANCE) {
+            document.getElementById("status").innerText = `🚫 คุณอยู่นอกพื้นที่ (${distance.toFixed(2)} เมตร)`;
+            return;
+          }
 
-        if (distance > MAX_DISTANCE) {
-          document.getElementById("status").innerHTML = `🚫 อยู่ห่างจากจุดสำนักงานเกิน ${MAX_DISTANCE} เมตร<br>(${distance.toFixed(2)} ม.)`;
-          return;
-        }
+          const res = await fetch(SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, lat, lng, accuracy: acc })
+          });
 
-        const payload = {
-          userId,
-          lat,
-          lng,
-          accuracy: acc
-        };
-
-        const res = await fetch(SCRIPT_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        const txt = await res.text();
-        document.getElementById("status").innerHTML = `✅ เช็คอินสำเร็จ<br>${txt}`;
-      }, (err) => {
-        document.getElementById("status").innerText = "❌ ไม่สามารถดึงพิกัด: " + err.message;
-      }, { enableHighAccuracy: true });
+          const txt = await res.text();
+          document.getElementById("status").innerText = "✅ " + txt;
+        },
+        (err) => {
+          document.getElementById("status").innerText = "❌ ไม่สามารถดึงพิกัด: " + err.message;
+        },
+        { enableHighAccuracy: true }
+      );
     }
 
-    // Haversine formula
+    async function initLIFF() {
+      await liff.init({ liffId: LIFF_ID });
+      await liff.ready;
+      document.getElementById("status").innerText = "พร้อมเช็คอินแล้ว ✅";
+    }
+
+    initLIFF();
+
     function calculateDistance(lat1, lng1, lat2, lng2) {
       function toRad(x) { return x * Math.PI / 180; }
-      const R = 6371000; // m
+      const R = 6371000;
       const dLat = toRad(lat2 - lat1);
       const dLng = toRad(lng2 - lng1);
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                 Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
                 Math.sin(dLng/2) * Math.sin(dLng/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return R * c;
     }
   </script>
